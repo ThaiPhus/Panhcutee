@@ -362,4 +362,316 @@ with tab2:
     with col2:
         st.markdown("**Tổng Hợp Thuế TNCN:**")
         
-        tax_summary = f"""
+        tax_summary = f"""        """
+        st.write(tax_summary)
+
+# ========== TAB 3: ANALYSIS ==========
+with tab3:
+    st.subheader("📊 Phân Tích & Biểu Đồ")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### Thu Nhập So Với Thuế")
+        if labor_income_after_expenses > 0:
+            fig, ax = plt.subplots(figsize=(8, 6))
+            labels = [f'Thuế TNCN\n{progressive_income_tax:,.0f} đ', 
+                     f'Thu Nhập Ròng\n{labor_income_after_expenses - progressive_income_tax:,.0f} đ']
+            sizes = [progressive_income_tax, labor_income_after_expenses - progressive_income_tax]
+            colors = ['#ff6b6b', '#51cf66']
+            wedges, texts, autotexts = ax.pie(sizes, labels=labels, autopct='%1.1f%%', 
+                                                colors=colors, startangle=90, textprops={'fontsize': 10})
+            ax.set_title("Phân Bổ Thu Nhập", fontsize=12, fontweight='bold')
+            st.pyplot(fig)
+    
+    with col2:
+        st.markdown("### Cơ Cấu Thuế TNCN")
+        if total_tax > 0:
+            tax_components = {
+                "Thuế lao động": progressive_income_tax,
+                "Thuế cổ tức": dividend_income_tax,
+                "Thuế lãi": transfer_income_tax,
+                "Thuế chuyển nhượng": capital_gain_tax,
+                "Thuế cho thuê": rental_income_tax
+            }
+            tax_components = {k: v for k, v in tax_components.items() if v > 0}
+            
+            if tax_components:
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.barh(list(tax_components.keys()), list(tax_components.values()), color='#4ecdc4')
+                ax.set_xlabel('Số tiền (đ)', fontsize=10)
+                ax.set_title('Cơ Cấu Thuế TNCN', fontsize=12, fontweight='bold')
+                for i, v in enumerate(tax_components.values()):
+                    ax.text(v, i, f' {v:,.0f}đ', va='center')
+                st.pyplot(fig)
+    
+    st.divider()
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### Cơ Cấu Thu Nhập")
+        income_sources = {
+            "Lương": salary,
+            "Phụ cấp": allowance,
+            "Thưởng": bonus,
+            "Công việc thêm": part_time_income,
+            "Kinh doanh": business_income,
+            "Cổ tức": dividend_income,
+            "Lãi suất": transfer_income,
+            "Cho thuê": rental_income,
+            "Lãi chuyển nhượng": capital_gain
+        }
+        income_sources = {k: v for k, v in income_sources.items() if v > 0}
+        
+        if income_sources:
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.barh(list(income_sources.keys()), list(income_sources.values()), color='#95e1d3')
+            ax.set_xlabel('Số tiền (đ)', fontsize=10)
+            ax.set_title('Cơ Cấu Thu Nhập', fontsize=12, fontweight='bold')
+            for i, v in enumerate(income_sources.values()):
+                ax.text(v, i, f' {v:,.0f}đ', va='center')
+            st.pyplot(fig)
+    
+    with col2:
+        st.markdown("### Giảm Trừ & Chi Phí")
+        deductions = {
+            "Giảm trừ cá nhân": standard_deduction,
+            "Bảo hiểm": calculated_insurance,
+            "Giảm trừ gia cảnh": dependent_deduction,
+            "Chi phí kinh doanh": business_expenses
+        }
+        deductions = {k: v for k, v in deductions.items() if v > 0}
+        
+        if deductions:
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.barh(list(deductions.keys()), list(deductions.values()), color='#ffeaa7')
+            ax.set_xlabel('Số tiền (đ)', fontsize=10)
+            ax.set_title('Các Khoản Giảm Trừ & Chi Phí', fontsize=12, fontweight='bold')
+            for i, v in enumerate(deductions.values()):
+                ax.text(v, i, f' {v:,.0f}đ', va='center')
+            st.pyplot(fig)
+
+# ========== TAB 4: RESULTS ==========
+with tab4:
+    st.subheader("💾 Kết Quả Tính Thuế & Xuất Báo Cáo")
+    
+    # Summary cards
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Tổng Thu Nhập", f"{total_labor_income + dividend_income + transfer_income + capital_gain + rental_income:,.0f} đ")
+    
+    with col2:
+        st.metric("Thu Nhập Chịu Thuế", f"{taxable_income_progressive:,.0f} đ")
+    
+    with col3:
+        st.metric("Tổng Thuế TNCN", f"{total_tax:,.0f} đ")
+    
+    with col4:
+        if total_labor_income + dividend_income + transfer_income + capital_gain + rental_income > 0:
+            rate = (total_tax / (total_labor_income + dividend_income + transfer_income + capital_gain + rental_income)) * 100
+        else:
+            rate = 0
+        st.metric("Suất Thuế Hiệu Dụng", f"{rate:.2f}%")
+    
+    st.divider()
+    
+    # Detailed summary
+    st.markdown("### 📋 Chi Tiết Kết Quả Tính Toán")
+    
+    summary_sections = {
+        "📊 Thu Nhập Chi Tiết": {
+            "Lương/Tiền lương": salary,
+            "Phụ cấp": allowance,
+            "Thưởng, hoa hồng": bonus,
+            "Thu nhập công việc thêm": part_time_income,
+            "Thu nhập kinh doanh": business_income,
+            "Cổ tức, lợi tức": dividend_income,
+            "Tiền lãi": transfer_income,
+            "Lãi chuyển nhượng tài sản": capital_gain,
+            "Thu nhập cho thuê": rental_income,
+            "**TỔNG THU NHẬP**": total_labor_income + dividend_income + transfer_income + capital_gain + rental_income,
+        },
+        "🎓 Các Khoản Giảm Trừ": {
+            "Giảm trừ cá nhân": standard_deduction,
+            "Bảo hiểm (BHXH, BHYT, BHTN)": calculated_insurance,
+            "Giảm trừ gia cảnh": dependent_deduction,
+            "Chi phí kinh doanh": business_expenses,
+            "**TỔNG GIẢM TRỪ**": standard_deduction + calculated_insurance + dependent_deduction + business_expenses,
+        },
+        "🧮 Tính Thuế": {
+            "Thu nhập chịu thuế lũy tiến": taxable_income_progressive,
+            "Thuế thu nhập lũy tiến (5%-35%)": progressive_income_tax,
+            "Thuế cổ tức (10%)": dividend_income_tax,
+            "Thuế tiền lãi (10%)": transfer_income_tax,
+            "Thuế lãi chuyển nhượng (20%)": capital_gain_tax,
+            "Thuế cho thuê (10%)": rental_income_tax,
+            "**TỔNG THUẾ PHẢI NỘP**": total_tax,
+        },
+        "💰 Tính Cuối Cùng": {
+            "Tổng thuế phải nộp": total_tax,
+            "Thuế đã nộp/khấu trừ": personal_income_tax_paid,
+            f"**THUẾ {'CÒN PHẢI NỘP' if tax_to_pay > 0 else 'ĐƯỢC HOÀN LẠI'}**": tax_to_pay if tax_to_pay > 0 else tax_refund,
+        }
+    }
+    
+    for section_name, section_data in summary_sections.items():
+        with st.expander(section_name, expanded=True):
+            for item, value in section_data.items():
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(item)
+                with col2:
+                    if "**" in item:
+                        st.write(f"**{value:,.0f} đ**")
+                    else:
+                        st.write(f"{value:,.0f} đ" if value > 0 else "-")
+    
+    st.divider()
+    
+    # Export options
+    st.markdown("### 📥 Xuất Báo Cáo")
+    
+    # Create export text
+    export_text = f"""
+BÁOBÁO CÁO TÍNH THUẾ THU NHẬP CÁ NHÂN - VIỆT NAM
+Ngày tạo: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+
+═══════════════════════════════════════════════════════════
+
+THÔNG TIN CÁ NHÂN
+Họ và tên: {full_name if full_name else "Chưa nhập"}
+CMND/CCCD: {citizen_id if citizen_id else "Chưa nhập"}
+Mã số thuế: {tax_code if tax_code else "Chưa nhập"}
+Năm tính thuế: {tax_year}
+
+═══════════════════════════════════════════════════════════
+
+THU NHẬP CHI TIẾT
+Lương/Thu nhập chính: {salary:>30,.0f} đ
+Phụ cấp: {allowance:>30,.0f} đ
+Thưởng, tiền hoa hồng: {bonus:>30,.0f} đ
+Thu nhập công việc thêm: {part_time_income:>30,.0f} đ
+Thu nhập kinh doanh: {business_income:>30,.0f} đ
+Cổ tức, lợi tức: {dividend_income:>30,.0f} đ
+Tiền lãi: {transfer_income:>30,.0f} đ
+Lãi chuyển nhượng tài sản: {capital_gain:>30,.0f} đ
+Thu nhập cho thuê: {rental_income:>30,.0f} đ
+───────────────────────────────────────────────────────────
+TỔNG THU NHẬP: {total_labor_income + dividend_income + transfer_income + capital_gain + rental_income:>30,.0f} đ
+
+═══════════════════════════════════════════════════════════
+
+CÁC KHOẢN GIẢM TRỪ
+Giảm trừ cá nhân (11 triệu/tháng): {standard_deduction:>25,.0f} đ
+Bảo hiểm BHXH, BHYT, BHTN: {calculated_insurance:>25,.0f} đ
+Giảm trừ gia cảnh ({num_minor_children + num_dependent_children} con): {dependent_deduction:>25,.0f} đ
+Chi phí kinh doanh ({business_expense_ratio}%): {business_expenses:>25,.0f} đ
+───────────────────────────────────────────────────────────
+TỔNG GIẢM TRỪ: {standard_deduction + calculated_insurance + dependent_deduction + business_expenses:>25,.0f} đ
+
+════════════════��══════════════════════════════════════════
+
+TÍNH THUẾ CHI TIẾT
+Thu nhập chịu thuế lũy tiến: {taxable_income_progressive:>25,.0f} đ
+
+Thuế thu nhập lũy tiến (5%-35%):
+  Áp dụng thang lũy tiến:     {progressive_income_tax:>25,.0f} đ
+
+Thuế cổ tức/lợi tức (10%):   {dividend_income_tax:>25,.0f} đ
+Thuế tiền lãi (10%):          {transfer_income_tax:>25,.0f} đ
+Thuế lãi chuyển nhượng (20%): {capital_gain_tax:>25,.0f} đ
+Thuế cho thuê bất động sản (10%): {rental_income_tax:>25,.0f} đ
+───────────────────────────────────────────────────────────
+TỔNG THUẾ PHẢI NỘP:          {total_tax:>25,.0f} đ
+
+═══════════════════════════════════════════════════════════
+
+KẾT QUẢ CUỐI CÙNG
+Tổng thuế phải nộp:          {total_tax:>25,.0f} đ
+Thuế đã nộp/khấu trừ:        {personal_income_tax_paid:>25,.0f} đ
+───────────────────────────────────────────────────────────
+{'THUẾ CÒN PHẢI NỘP:' if tax_to_pay > 0 else 'ĐƯỢC HOÀN LẠI:'} {(tax_to_pay if tax_to_pay > 0 else tax_refund):>25,.0f} đ
+
+═══════════════════════════════════════════════════════════
+
+GHI CHÚ:
+- Giảm trừ cá nhân: 11,000,000 đ/tháng (132,000,000 đ/năm)
+- Giảm trừ gia cảnh: 4,800,000 đ/con/năm (con dưới 18 tuổi hoặc 18-24 tuổi đang học)
+- Bảo hiểm tính theo quy định hiện hành
+- Thuế lũy tiến áp dụng: 5%, 10%, 15%, 20%, 25%, 30%, 35%
+- Thuế suất cố định: Cổ tức 10%, Lãi 10%, Chuyển nhượng 20%, Cho thuê 10%
+
+TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM:
+Báo cáo này được tính toán dựa trên các thông tin do người dùng cung cấp
+và theo quy định thuế hiện hành. Người sử dụng nên tham khảo ý kiến
+của chuyên gia tư vấn thuế hoặc cơ quan thuế để có kết quả chính xác nhất.
+
+═══════════════════════════════════════════════════════════
+"""
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.download_button(
+            label="📄 Tải Báo Cáo (File Text)",
+            data=export_text,
+            file_name=f"bao_cao_thue_tncn_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain"
+        )
+    
+    with col2:
+        # Create CSV export
+        csv_data = f"CHỈ TIÊU,SỐ TIỀN (VNĐ)\n"
+        csv_data += f"\nTHU NHẬP,\n"
+        csv_data += f"Lương,{salary:,.0f}\n"
+        csv_data += f"Phụ cấp,{allowance:,.0f}\n"
+        csv_data += f"Thưởng,{bonus:,.0f}\n"
+        csv_data += f"Công việc thêm,{part_time_income:,.0f}\n"
+        csv_data += f"Kinh doanh,{business_income:,.0f}\n"
+        csv_data += f"Cổ tức,{dividend_income:,.0f}\n"
+        csv_data += f"Lãi suất,{transfer_income:,.0f}\n"
+        csv_data += f"Chuyển nhượng,{capital_gain:,.0f}\n"
+        csv_data += f"Cho thuê,{rental_income:,.0f}\n"
+        csv_data += f"TỔNG THU NHẬP,{total_labor_income + dividend_income + transfer_income + capital_gain + rental_income:,.0f}\n"
+        csv_data += f"\nGIẢM TRỪ,\n"
+        csv_data += f"Giảm trừ cá nhân,{standard_deduction:,.0f}\n"
+        csv_data += f"Bảo hiểm,{calculated_insurance:,.0f}\n"
+        csv_data += f"Giảm trừ gia cảnh,{dependent_deduction:,.0f}\n"
+        csv_data += f"Chi phí kinh doanh,{business_expenses:,.0f}\n"
+        csv_data += f"\nTHUẾ,\n"
+        csv_data += f"Thuế lũy tiến,{progressive_income_tax:,.0f}\n"
+        csv_data += f"Thuế cổ tức,{dividend_income_tax:,.0f}\n"
+        csv_data += f"Thuế lãi,{transfer_income_tax:,.0f}\n"
+        csv_data += f"Thuế chuyển nhượng,{capital_gain_tax:,.0f}\n"
+        csv_data += f"Thuế cho thuê,{rental_income_tax:,.0f}\n"
+        csv_data += f"TỔNG THUẾ,{total_tax:,.0f}\n"
+        
+        st.download_button(
+            label="📊 Tải Báo Cáo (File CSV)",
+            data=csv_data,
+            file_name=f"bao_cao_thue_tncn_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
+
+# Footer
+st.divider()
+st.markdown("""
+<div class="warning-box">
+<strong>⚠️ TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM:</strong>
+<br><br>
+Ứng dụng này được phát triển cho mục đích giáo dục và ước lượng. Kết quả tính toán dựa trên 
+thông tin người dùng cung cấp và theo luật thuế Việt Nam hiện hành (năm 2024). 
+<br><br>
+Tuy nhiên:
+<ul>
+<li>Ứng dụng không thay thế cho tư vấn chuyên nghiệp từ một chuyên gia tư vấn thuế hoặc kế toán.</li>
+<li>Có thể có những trường hợp đặc biệt, miễn trừ, hoặc điều kiện riêng không được tính đến.</li>
+<li>Kết quả tính toán cần được kiểm tra lại bởi cá nhân hoặc chuyên gia trước khi nộp thuế.</li>
+<li>Cơ quan thuế là thẩm quyền cuối cùng trong xác định nghĩa vụ thuế.</li>
+</ul>
+
+Vui lòng liên hệ với cơ quan thuế hoặc chuyên gia tư vấn thuế để có lời khuyên chính xác nhất.
+</div>
+""", unsafe_allow_html=True)
