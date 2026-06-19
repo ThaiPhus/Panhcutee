@@ -1,13 +1,22 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
-from datetime import datetime
+import matplotlib.pyplot as plt
+import seaborn as sns
+from datetime import datetime, timedelta
+import yfinance as yf
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+import warnings
+warnings.filterwarnings('ignore')
 
 # Set page configuration
 st.set_page_config(
-    page_title="Tính Thuế Thu Nhập Cá Nhân - Việt Nam",
-    page_icon="💰",
+    page_title="Stock Price Prediction AI",
+    page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -15,10 +24,25 @@ st.set_page_config(
 # Custom CSS
 st.markdown("""
     <style>
-    .metric-value {
-        font-size: 2em;
+    .metric-card {
+        background-color: #f0f2f6;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .bullish {
+        color: #27ae60;
         font-weight: bold;
-        color: #1f77b4;
+    }
+    .bearish {
+        color: #e74c3c;
+        font-weight: bold;
+    }
+    .info-box {
+        background-color: #d1ecf1;
+        padding: 15px;
+        border-radius: 5px;
+        border-left: 4px solid #17a2b8;
     }
     .warning-box {
         background-color: #fff3cd;
@@ -26,652 +50,715 @@ st.markdown("""
         border-radius: 5px;
         border-left: 4px solid #ffc107;
     }
-    .success-box {
-        background-color: #d4edda;
-        padding: 15px;
-        border-radius: 5px;
-        border-left: 4px solid #28a745;
-    }
     </style>
     """, unsafe_allow_html=True)
 
-# Title and Description
-st.title("💰 Tính Thuế Thu Nhập Cá Nhân - Việt Nam")
-st.markdown("Tính toán thuế thu nhập cá nhân theo luật thuế hiện hành của Việt Nam (năm 2024)")
+# Title
+st.title("📈 Stock Price Prediction AI Model")
+st.markdown("Mô hình dự đoán giá cổ phiếu sử dụng Machine Learning & Technical Analysis")
 
-# Create tabs
-tab1, tab2, tab3, tab4 = st.tabs(["📝 Nhập Thông Tin", "🧮 Tính Toán", "📊 Phân Tích", "💾 Kết Quả"])
+# Sidebar
+st.sidebar.header("⚙️ Cấu Hình")
 
-# ========== TAB 1: INPUT INFORMATION ==========
-with tab1:
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("👤 Thông Tin Cá Nhân")
-        full_name = st.text_input("Họ và tên", value="")
-        citizen_id = st.text_input("CMND/CCCD", value="")
-        tax_code = st.text_input("Mã số thuế (nếu có)", value="")
-    
-    with col2:
-        st.subheader("📅 Thời Gian & Loại Thu Nhập")
-        tax_year = st.selectbox("Năm tính thuế", [2024, 2023, 2022, 2021])
-        calc_type = st.radio("Loại tính thuế", ["Hàng tháng", "Hàng năm"])
-    
-    st.divider()
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.subheader("💼 Thu Nhập Từ Lao Động")
-        salary = st.number_input("Lương/Thu nhập từ công việc chính", value=0.0, min_value=0.0, step=100000.0)
-        allowance = st.number_input("Phụ cấp (cấp bậc, vị trí, khu vực...)", value=0.0, min_value=0.0, step=100000.0)
-        bonus = st.number_input("Thưởng, tiền hoa hồng", value=0.0, min_value=0.0, step=100000.0)
-    
-    with col2:
-        st.subheader("🏢 Thu Nhập Khác")
-        part_time_income = st.number_input("Thu nhập từ công việc thêm", value=0.0, min_value=0.0, step=100000.0)
-        rental_income = st.number_input("Thu nhập cho thuê bất động sản", value=0.0, min_value=0.0, step=100000.0)
-        business_income = st.number_input("Thu nhập từ hoạt động kinh doanh", value=0.0, min_value=0.0, step=100000.0)
-    
-    with col3:
-        st.subheader("📈 Thu Nhập Từ Vốn")
-        dividend_income = st.number_input("Cổ tức, lợi tức từ cổ phần", value=0.0, min_value=0.0, step=100000.0)
-        transfer_income = st.number_input("Lãi suất, tiền lãi", value=0.0, min_value=0.0, step=100000.0)
-        capital_gain = st.number_input("Lãi từ chuyển nhượng tài sản", value=0.0, min_value=0.0, step=100000.0)
-    
-    st.divider()
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("🎓 Các Khoản Giảm Trừ")
-        
-        st.markdown("**Giảm trừ gia cảnh:**")
-        is_minor_child = st.checkbox("Có con dưới 18 tuổi (mỗi con: 4,800,000 đ/năm)")
-        num_minor_children = 0
-        if is_minor_child:
-            num_minor_children = st.number_input("Số lượng con dưới 18 tuổi", min_value=0, max_value=10, value=0)
-        
-        is_dependent_child = st.checkbox("Có con từ 18-24 tuổi đang học tập (mỗi con: 4,800,000 đ/năm)")
-        num_dependent_children = 0
-        if is_dependent_child:
-            num_dependent_children = st.number_input("Số lượng con 18-24 tuổi", min_value=0, max_value=10, value=0)
-        
-        st.markdown("**Khoản giảm trừ khác:**")
-        insurance_contribution = st.number_input("Bảo hiểm xã hội, y tế, thất nghiệp", value=0.0, min_value=0.0, step=100000.0, 
-                                                  help="Bao gồm BHXH, BHYT, BHTN (nếu không có, sẽ được tính tự động)")
-    
-    with col2:
-        st.subheader("💰 Chi Phí & Khoản Khác")
-        
-        st.markdown("**Chi phí cho hoạt động kinh doanh/HĐKD:**")
-        business_expense_ratio = st.selectbox("Tỷ lệ chi phí kinh doanh (%)", 
-                                               [0, 5, 10, 15, 20, 25, 30],
-                                               help="Tỷ lệ chi phí hợp lý so với thu nhập kinh doanh")
-        
-        st.markdown("**Khoản khác:**")
-        charitable_donation = st.number_input("Tài trợ, quyên góp từ thiện", value=0.0, min_value=0.0, step=100000.0,
-                                              help="Không quá 10% thu nhập chịu thuế")
-        
-        st.markdown("**Thuế đã nộp/đã khấu trừ:**")
-        personal_income_tax_paid = st.number_input("Thuế TNCN đã nộp/khấu trừ", value=0.0, min_value=0.0, step=100000.0)
+# Stock selection
+stock_symbol = st.sidebar.text_input("Mã cổ phiếu (VN30, FPT, TCB, etc.)", value="FPT.VN", help="Nhập mã cổ phiếu")
 
-# ========== TAB 2: CALCULATIONS ==========
-with tab2:
-    st.subheader("🧮 Chi Tiết Tính Toán Thuế TNCN")
-    
-    # Vietnamese tax brackets for personal income (2024)
-    # Based on Decree 124/2020/ND-CP and current regulations
-    
-    tax_brackets_2024 = [
-        (5000000, 0.05),
-        (10000000, 0.10),
-        (18000000, 0.15),
-        (32000000, 0.20),
-        (52000000, 0.25),
-        (80000000, 0.30),
-        (float('inf'), 0.35)
-    ]
-    
-    # Special tax rates
-    DIVIDEND_TAX_RATE = 0.10  # 10% for dividends
-    CAPITAL_GAIN_TAX_RATE = 0.20  # 20% for capital gains
-    RENTAL_INCOME_TAX_RATE = 0.10  # 10% for rental income
-    INTEREST_TAX_RATE = 0.10  # 10% for interest income
-    
-    def calculate_insurance_contribution(base_income):
-        """Calculate social insurance contributions (8% BHXH, 1.5% BHYT, 0.5% BHTN)"""
-        if base_income > 0:
-            bhxh = base_income * 0.08
-            bhyt = base_income * 0.015
-            bhtn = base_income * 0.005
-            return bhxh + bhyt + bhtn
-        return 0
-    
-    def calculate_dependent_deduction(num_minor, num_dependent):
-        """Calculate deduction for dependents"""
-        # 4,800,000 VND per child per year
-        annual_deduction = (num_minor + num_dependent) * 4800000
-        return annual_deduction
-    
-    def calculate_income_tax(taxable_income):
-        """Calculate progressive income tax using Vietnamese tax brackets"""
-        if taxable_income <= 0:
-            return 0
+# Time period
+lookback_days = st.sidebar.slider("Số ngày dữ liệu lịch sử (Lookback)", min_value=30, max_value=365, value=180, step=30)
+
+# Prediction days
+prediction_days = st.sidebar.slider("Dự đoán cho bao nhiêu ngày tới", min_value=1, max_value=30, value=10, step=1)
+
+# Model selection
+model_type = st.sidebar.selectbox("Chọn mô hình AI", 
+                                   ["Random Forest", "Linear Regression", "Combined (Ensemble)"])
+
+# Tabs
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Dữ Liệu & Phân Tích", "🤖 Mô Hình ML", "🔮 Dự Đoán", "📈 Chỉ Báo Kỹ Thuật", "❓ Hướng Dẫn"])
+
+# ========== LOAD DATA ==========
+@st.cache_data
+def load_stock_data(symbol, days):
+    """Load stock data from yfinance"""
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
         
-        tax = 0
-        previous_limit = 0
+        data = yf.download(symbol, start=start_date, end=end_date, progress=False)
         
-        for limit, rate in tax_brackets_2024:
-            if taxable_income <= previous_limit:
-                break
-            
-            income_in_bracket = min(taxable_income, limit) - previous_limit
-            tax += income_in_bracket * rate
-            previous_limit = limit
+        if len(data) == 0:
+            return None
         
-        return tax
+        return data
+    except Exception as e:
+        st.error(f"Lỗi khi tải dữ liệu: {e}")
+        return None
+
+def calculate_technical_indicators(df):
+    """Calculate technical indicators"""
+    df = df.copy()
     
-    # Collect all income sources
-    labor_income = salary + allowance + bonus
-    part_time = part_time_income
-    other_business_income = business_income
+    # Simple Moving Averages
+    df['SMA_5'] = df['Close'].rolling(window=5).mean()
+    df['SMA_20'] = df['Close'].rolling(window=20).mean()
+    df['SMA_50'] = df['Close'].rolling(window=50).mean()
     
-    # Investment income - separate tax treatment
-    dividend_income_tax = dividend_income * DIVIDEND_TAX_RATE
-    transfer_income_tax = transfer_income * INTEREST_TAX_RATE
-    capital_gain_tax = capital_gain * CAPITAL_GAIN_TAX_RATE
-    rental_income_tax = rental_income * RENTAL_INCOME_TAX_RATE
+    # Exponential Moving Averages
+    df['EMA_12'] = df['Close'].ewm(span=12).mean()
+    df['EMA_26'] = df['Close'].ewm(span=26).mean()
     
-    # Calculate insurance contributions
-    if insurance_contribution == 0:
-        # Auto-calculate if not provided (typically 10% of salary)
-        calculated_insurance = calculate_insurance_contribution(labor_income)
+    # MACD
+    df['MACD'] = df['EMA_12'] - df['EMA_26']
+    df['Signal'] = df['MACD'].ewm(span=9).mean()
+    df['MACD_Hist'] = df['MACD'] - df['Signal']
+    
+    # RSI
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['RSI'] = 100 - (100 / (1 + rs))
+    
+    # Bollinger Bands
+    df['BB_Middle'] = df['Close'].rolling(window=20).mean()
+    bb_std = df['Close'].rolling(window=20).std()
+    df['BB_Upper'] = df['BB_Middle'] + (bb_std * 2)
+    df['BB_Lower'] = df['BB_Middle'] - (bb_std * 2)
+    
+    # Average True Range (ATR)
+    df['High-Low'] = df['High'] - df['Low']
+    df['High-Close'] = abs(df['High'] - df['Close'].shift())
+    df['Low-Close'] = abs(df['Low'] - df['Close'].shift())
+    df['TR'] = df[['High-Low', 'High-Close', 'Low-Close']].max(axis=1)
+    df['ATR'] = df['TR'].rolling(window=14).mean()
+    
+    # Volume indicators
+    df['Volume_MA'] = df['Volume'].rolling(window=20).mean()
+    df['Volume_Signal'] = df['Volume'] / df['Volume_MA']
+    
+    # Daily returns
+    df['Daily_Return'] = df['Close'].pct_change()
+    df['Price_Change'] = df['Close'].diff()
+    
+    # Volatility
+    df['Volatility'] = df['Daily_Return'].rolling(window=20).std()
+    
+    return df
+
+def prepare_ml_data(df, lookback=20):
+    """Prepare data for machine learning"""
+    df = df.copy().dropna()
+    
+    # Create features from past prices
+    X = []
+    y = []
+    
+    for i in range(len(df) - lookback - 1):
+        # Features: past 20 days of close prices
+        X.append(df['Close'].iloc[i:i+lookback].values)
+        # Target: next day's close price
+        y.append(df['Close'].iloc[i+lookback])
+    
+    X = np.array(X)
+    y = np.array(y)
+    
+    # Normalize features
+    scaler = MinMaxScaler()
+    X_scaled = scaler.fit_transform(X.reshape(-1, lookback)).reshape(X.shape)
+    
+    return X_scaled, y, scaler
+
+def train_ml_models(X, y, model_type):
+    """Train machine learning models"""
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    if model_type == "Random Forest":
+        model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+        model.fit(X_train, y_train)
+    elif model_type == "Linear Regression":
+        model = LinearRegression()
+        model.fit(X_train, y_train)
+    else:  # Combined
+        model1 = RandomForestRegressor(n_estimators=50, random_state=42, n_jobs=-1)
+        model2 = LinearRegression()
+        model1.fit(X_train, y_train)
+        model2.fit(X_train, y_train)
+        model = (model1, model2)
+    
+    # Predictions
+    if model_type == "Combined (Ensemble)":
+        y_pred_train = (model[0].predict(X_train) + model[1].predict(X_train)) / 2
+        y_pred_test = (model[0].predict(X_test) + model[1].predict(X_test)) / 2
     else:
-        calculated_insurance = insurance_contribution
+        y_pred_train = model.predict(X_train)
+        y_pred_test = model.predict(X_test)
     
-    # Calculate dependent deductions
-    dependent_deduction = calculate_dependent_deduction(num_minor_children, num_dependent_children)
+    # Metrics
+    train_rmse = np.sqrt(mean_squared_error(y_train, y_pred_train))
+    test_rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
+    test_r2 = r2_score(y_test, y_pred_test)
+    test_mae = mean_absolute_error(y_test, y_pred_test)
     
-    # Total taxable income (for progressive tax)
-    total_labor_income = labor_income + part_time + other_business_income
-    
-    # Business expenses
-    business_expenses = (business_income * business_expense_ratio) / 100
-    
-    # Personal income after expenses (before deductions and special income)
-    labor_income_after_expenses = total_labor_income - business_expenses
-    
-    # Standard personal deduction (11 million VND per month, 132 million per year)
-    if calc_type == "Hàng tháng":
-        standard_deduction = 11000000
-        period_text = "tháng"
-    else:
-        standard_deduction = 132000000
-        period_text = "năm"
-    
-    # Calculate taxable income for progressive tax
-    taxable_income_progressive = max(0, labor_income_after_expenses - standard_deduction - dependent_deduction - calculated_insurance)
-    
-    # Calculate progressive income tax
-    progressive_income_tax = calculate_income_tax(taxable_income_progressive)
-    
-    # Charitable donation (max 10% of taxable income, can reduce tax)
-    max_charitable = taxable_income_progressive * 0.10
-    actual_charitable = min(charitable_donation, max_charitable)
-    
-    # Total tax liability
-    total_tax = progressive_income_tax + dividend_income_tax + transfer_income_tax + capital_gain_tax + rental_income_tax
-    
-    # Tax to pay (after considering paid tax)
-    tax_to_pay = max(0, total_tax - personal_income_tax_paid)
-    tax_refund = max(0, personal_income_tax_paid - total_tax)
-    
-    # Display calculation steps
-    st.markdown("### 📊 Bước 1: Thu Nhập Từ Lao Động")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        income_detail = {
-            "Lương cơ bản": salary,
-            "Phụ cấp": allowance,
-            "Thưởng": bonus,
-            "Thu nhập công việc thêm": part_time_income,
-            "Thu nhập kinh doanh": business_income,
-            "**Tổng thu nhập từ lao động**": total_labor_income
-        }
-        
-        for item, value in income_detail.items():
-            col_a, col_b = st.columns([3, 1])
-            with col_a:
-                st.write(item)
-            with col_b:
-                if "**" in item:
-                    st.write(f"**{value:,.0f} đ**")
-                else:
-                    st.write(f"{value:,.0f} đ" if value > 0 else "-")
-    
-    with col2:
-        st.markdown("### Chi Phí & Giảm Trừ")
-        
-        deduction_detail = {
-            "Chi phí kinh doanh": business_expenses,
-            "Bảo hiểm (BHXH, BHYT, BHTN)": calculated_insurance,
-            "Giảm trừ gia cảnh": dependent_deduction,
-            "Giảm trừ cá nhân": standard_deduction,
-            "**Tổng khoản giảm trừ**": business_expenses + calculated_insurance + dependent_deduction + standard_deduction
-        }
-        
-        for item, value in deduction_detail.items():
-            col_a, col_b = st.columns([3, 1])
-            with col_a:
-                st.write(item)
-            with col_b:
-                if "**" in item:
-                    st.write(f"**{value:,.0f} đ**")
-                else:
-                    st.write(f"{value:,.0f} đ" if value > 0 else "-")
-    
-    st.divider()
-    
-    st.markdown("### 📊 Bước 2: Tính Thuế Thu Nhập Từ Lao Động")
-    
-    # Show tax calculation details
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**Thu Nhập Chịu Thuế Lũy Tiến:**")
-        st.write(f"```")
-        st.write(f"Tổng thu nhập lao động:     {total_labor_income:>18,.0f} đ")
-        st.write(f"Trừ chi phí kinh doanh:     {business_expenses:>18,.0f} đ")
-        st.write(f"Trừ bảo hiểm:               {calculated_insurance:>18,.0f} đ")
-        st.write(f"Trừ giảm trừ gia cảnh:      {dependent_deduction:>18,.0f} đ")
-        st.write(f"Trừ giảm trừ cá nhân:       {standard_deduction:>18,.0f} đ")
-        st.write(f"─────────────────────────────────────────")
-        st.write(f"Thu nhập chịu thuế:         {taxable_income_progressive:>18,.0f} đ")
-        st.write(f"```")
-    
-    with col2:
-        st.markdown("**Tính Thuế Lũy Tiến:**")
-        
-        # Show bracket calculation
-        temp_income = taxable_income_progressive
-        running_tax = 0
-        bracket_text = "```\n"
-        
-        for limit, rate in tax_brackets_2024:
-            if temp_income <= 0:
-                break
-            
-            prev_limit = sum([b[0] - (tax_brackets_2024[i-1][0] if i > 0 else 0) for i, b in enumerate(tax_brackets_2024[:tax_brackets_2024.index((limit, rate))])])
-            
-            if temp_income <= limit - prev_limit:
-                income_in_bracket = temp_income
-            else:
-                income_in_bracket = limit - prev_limit if prev_limit > 0 else limit
-            
-            tax_in_bracket = income_in_bracket * rate
-            bracket_text += f"{income_in_bracket:>15,.0f} × {rate*100:>3.0f}% = {tax_in_bracket:>15,.0f} đ\n"
-            
-            temp_income -= income_in_bracket
-            running_tax += tax_in_bracket
-            
-            if temp_income <= 0:
-                break
-        
-        bracket_text += f"─────────────────────────────────────────\n"
-        bracket_text += f"Thuế TNCN lũy tiến:  {progressive_income_tax:>18,.0f} đ\n"
-        bracket_text += "```"
-        
-        st.write(bracket_text)
-    
-    st.divider()
-    
-    st.markdown("### 📊 Bước 3: Thu Nhập Và Thuế Khác")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**Thu Nhập Từ Vốn (Thuế Suất Cố Định):**")
-        
-        capital_detail = {
-            f"Cổ tức, lợi tức (@{DIVIDEND_TAX_RATE*100:.0f}%)": (dividend_income, dividend_income_tax),
-            f"Tiền lãi (@{INTEREST_TAX_RATE*100:.0f}%)": (transfer_income, transfer_income_tax),
-            f"Lãi chuyển nhượng tài sản (@{CAPITAL_GAIN_TAX_RATE*100:.0f}%)": (capital_gain, capital_gain_tax),
-            f"Cho thuê bất động sản (@{RENTAL_INCOME_TAX_RATE*100:.0f}%)": (rental_income, rental_income_tax),
-        }
-        
-        total_capital_income = 0
-        total_capital_tax = 0
-        
-        for item, (income, tax) in capital_detail.items():
-            if income > 0:
-                st.write(f"{item}")
-                st.write(f"  Thu nhập: {income:>25,.0f} đ")
-                st.write(f"  Thuế:     {tax:>25,.0f} đ")
-                total_capital_income += income
-                total_capital_tax += tax
-                st.write("---")
-        
-        if total_capital_income > 0:
-            st.write(f"**Tổng cộng:**")
-            st.write(f"  Thu nhập: {total_capital_income:>25,.0f} đ")
-            st.write(f"  Thuế:     {total_capital_tax:>25,.0f} đ")
-    
-    with col2:
-        st.markdown("**Tổng Hợp Thuế TNCN:**")
-        
-        tax_summary = f"""        """
-        st.write(tax_summary)
-
-# ========== TAB 3: ANALYSIS ==========
-with tab3:
-    st.subheader("📊 Phân Tích & Biểu Đồ")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### Thu Nhập So Với Thuế")
-        if labor_income_after_expenses > 0:
-            fig, ax = plt.subplots(figsize=(8, 6))
-            labels = [f'Thuế TNCN\n{progressive_income_tax:,.0f} đ', 
-                     f'Thu Nhập Ròng\n{labor_income_after_expenses - progressive_income_tax:,.0f} đ']
-            sizes = [progressive_income_tax, labor_income_after_expenses - progressive_income_tax]
-            colors = ['#ff6b6b', '#51cf66']
-            wedges, texts, autotexts = ax.pie(sizes, labels=labels, autopct='%1.1f%%', 
-                                                colors=colors, startangle=90, textprops={'fontsize': 10})
-            ax.set_title("Phân Bổ Thu Nhập", fontsize=12, fontweight='bold')
-            st.pyplot(fig)
-    
-    with col2:
-        st.markdown("### Cơ Cấu Thuế TNCN")
-        if total_tax > 0:
-            tax_components = {
-                "Thuế lao động": progressive_income_tax,
-                "Thuế cổ tức": dividend_income_tax,
-                "Thuế lãi": transfer_income_tax,
-                "Thuế chuyển nhượng": capital_gain_tax,
-                "Thuế cho thuê": rental_income_tax
-            }
-            tax_components = {k: v for k, v in tax_components.items() if v > 0}
-            
-            if tax_components:
-                fig, ax = plt.subplots(figsize=(8, 6))
-                ax.barh(list(tax_components.keys()), list(tax_components.values()), color='#4ecdc4')
-                ax.set_xlabel('Số tiền (đ)', fontsize=10)
-                ax.set_title('Cơ Cấu Thuế TNCN', fontsize=12, fontweight='bold')
-                for i, v in enumerate(tax_components.values()):
-                    ax.text(v, i, f' {v:,.0f}đ', va='center')
-                st.pyplot(fig)
-    
-    st.divider()
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### Cơ Cấu Thu Nhập")
-        income_sources = {
-            "Lương": salary,
-            "Phụ cấp": allowance,
-            "Thưởng": bonus,
-            "Công việc thêm": part_time_income,
-            "Kinh doanh": business_income,
-            "Cổ tức": dividend_income,
-            "Lãi suất": transfer_income,
-            "Cho thuê": rental_income,
-            "Lãi chuyển nhượng": capital_gain
-        }
-        income_sources = {k: v for k, v in income_sources.items() if v > 0}
-        
-        if income_sources:
-            fig, ax = plt.subplots(figsize=(8, 6))
-            ax.barh(list(income_sources.keys()), list(income_sources.values()), color='#95e1d3')
-            ax.set_xlabel('Số tiền (đ)', fontsize=10)
-            ax.set_title('Cơ Cấu Thu Nhập', fontsize=12, fontweight='bold')
-            for i, v in enumerate(income_sources.values()):
-                ax.text(v, i, f' {v:,.0f}đ', va='center')
-            st.pyplot(fig)
-    
-    with col2:
-        st.markdown("### Giảm Trừ & Chi Phí")
-        deductions = {
-            "Giảm trừ cá nhân": standard_deduction,
-            "Bảo hiểm": calculated_insurance,
-            "Giảm trừ gia cảnh": dependent_deduction,
-            "Chi phí kinh doanh": business_expenses
-        }
-        deductions = {k: v for k, v in deductions.items() if v > 0}
-        
-        if deductions:
-            fig, ax = plt.subplots(figsize=(8, 6))
-            ax.barh(list(deductions.keys()), list(deductions.values()), color='#ffeaa7')
-            ax.set_xlabel('Số tiền (đ)', fontsize=10)
-            ax.set_title('Các Khoản Giảm Trừ & Chi Phí', fontsize=12, fontweight='bold')
-            for i, v in enumerate(deductions.values()):
-                ax.text(v, i, f' {v:,.0f}đ', va='center')
-            st.pyplot(fig)
-
-# ========== TAB 4: RESULTS ==========
-with tab4:
-    st.subheader("💾 Kết Quả Tính Thuế & Xuất Báo Cáo")
-    
-    # Summary cards
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Tổng Thu Nhập", f"{total_labor_income + dividend_income + transfer_income + capital_gain + rental_income:,.0f} đ")
-    
-    with col2:
-        st.metric("Thu Nhập Chịu Thuế", f"{taxable_income_progressive:,.0f} đ")
-    
-    with col3:
-        st.metric("Tổng Thuế TNCN", f"{total_tax:,.0f} đ")
-    
-    with col4:
-        if total_labor_income + dividend_income + transfer_income + capital_gain + rental_income > 0:
-            rate = (total_tax / (total_labor_income + dividend_income + transfer_income + capital_gain + rental_income)) * 100
-        else:
-            rate = 0
-        st.metric("Suất Thuế Hiệu Dụng", f"{rate:.2f}%")
-    
-    st.divider()
-    
-    # Detailed summary
-    st.markdown("### 📋 Chi Tiết Kết Quả Tính Toán")
-    
-    summary_sections = {
-        "📊 Thu Nhập Chi Tiết": {
-            "Lương/Tiền lương": salary,
-            "Phụ cấp": allowance,
-            "Thưởng, hoa hồng": bonus,
-            "Thu nhập công việc thêm": part_time_income,
-            "Thu nhập kinh doanh": business_income,
-            "Cổ tức, lợi tức": dividend_income,
-            "Tiền lãi": transfer_income,
-            "Lãi chuyển nhượng tài sản": capital_gain,
-            "Thu nhập cho thuê": rental_income,
-            "**TỔNG THU NHẬP**": total_labor_income + dividend_income + transfer_income + capital_gain + rental_income,
-        },
-        "🎓 Các Khoản Giảm Trừ": {
-            "Giảm trừ cá nhân": standard_deduction,
-            "Bảo hiểm (BHXH, BHYT, BHTN)": calculated_insurance,
-            "Giảm trừ gia cảnh": dependent_deduction,
-            "Chi phí kinh doanh": business_expenses,
-            "**TỔNG GIẢM TRỪ**": standard_deduction + calculated_insurance + dependent_deduction + business_expenses,
-        },
-        "🧮 Tính Thuế": {
-            "Thu nhập chịu thuế lũy tiến": taxable_income_progressive,
-            "Thuế thu nhập lũy tiến (5%-35%)": progressive_income_tax,
-            "Thuế cổ tức (10%)": dividend_income_tax,
-            "Thuế tiền lãi (10%)": transfer_income_tax,
-            "Thuế lãi chuyển nhượng (20%)": capital_gain_tax,
-            "Thuế cho thuê (10%)": rental_income_tax,
-            "**TỔNG THUẾ PHẢI NỘP**": total_tax,
-        },
-        "💰 Tính Cuối Cùng": {
-            "Tổng thuế phải nộp": total_tax,
-            "Thuế đã nộp/khấu trừ": personal_income_tax_paid,
-            f"**THUẾ {'CÒN PHẢI NỘP' if tax_to_pay > 0 else 'ĐƯỢC HOÀN LẠI'}**": tax_to_pay if tax_to_pay > 0 else tax_refund,
-        }
+    return model, {
+        'train_rmse': train_rmse,
+        'test_rmse': test_rmse,
+        'test_r2': test_r2,
+        'test_mae': test_mae,
+        'X_test': X_test,
+        'y_test': y_test,
+        'y_pred_test': y_pred_test
     }
+
+def predict_future_prices(model, last_sequence, scaler, num_days, model_type):
+    """Predict future prices"""
+    predictions = []
+    current_sequence = last_sequence.copy()
     
-    for section_name, section_data in summary_sections.items():
-        with st.expander(section_name, expanded=True):
-            for item, value in section_data.items():
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.write(item)
-                with col2:
-                    if "**" in item:
-                        st.write(f"**{value:,.0f} đ**")
-                    else:
-                        st.write(f"{value:,.0f} đ" if value > 0 else "-")
-    
-    st.divider()
-    
-    # Export options
-    st.markdown("### 📥 Xuất Báo Cáo")
-    
-    # Create export text
-    export_text = f"""
-BÁOBÁO CÁO TÍNH THUẾ THU NHẬP CÁ NHÂN - VIỆT NAM
-Ngày tạo: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-
-═══════════════════════════════════════════════════════════
-
-THÔNG TIN CÁ NHÂN
-Họ và tên: {full_name if full_name else "Chưa nhập"}
-CMND/CCCD: {citizen_id if citizen_id else "Chưa nhập"}
-Mã số thuế: {tax_code if tax_code else "Chưa nhập"}
-Năm tính thuế: {tax_year}
-
-═══════════════════════════════════════════════════════════
-
-THU NHẬP CHI TIẾT
-Lương/Thu nhập chính: {salary:>30,.0f} đ
-Phụ cấp: {allowance:>30,.0f} đ
-Thưởng, tiền hoa hồng: {bonus:>30,.0f} đ
-Thu nhập công việc thêm: {part_time_income:>30,.0f} đ
-Thu nhập kinh doanh: {business_income:>30,.0f} đ
-Cổ tức, lợi tức: {dividend_income:>30,.0f} đ
-Tiền lãi: {transfer_income:>30,.0f} đ
-Lãi chuyển nhượng tài sản: {capital_gain:>30,.0f} đ
-Thu nhập cho thuê: {rental_income:>30,.0f} đ
-───────────────────────────────────────────────────────────
-TỔNG THU NHẬP: {total_labor_income + dividend_income + transfer_income + capital_gain + rental_income:>30,.0f} đ
-
-═══════════════════════════════════════════════════════════
-
-CÁC KHOẢN GIẢM TRỪ
-Giảm trừ cá nhân (11 triệu/tháng): {standard_deduction:>25,.0f} đ
-Bảo hiểm BHXH, BHYT, BHTN: {calculated_insurance:>25,.0f} đ
-Giảm trừ gia cảnh ({num_minor_children + num_dependent_children} con): {dependent_deduction:>25,.0f} đ
-Chi phí kinh doanh ({business_expense_ratio}%): {business_expenses:>25,.0f} đ
-───────────────────────────────────────────────────────────
-TỔNG GIẢM TRỪ: {standard_deduction + calculated_insurance + dependent_deduction + business_expenses:>25,.0f} đ
-
-════════════════��══════════════════════════════════════════
-
-TÍNH THUẾ CHI TIẾT
-Thu nhập chịu thuế lũy tiến: {taxable_income_progressive:>25,.0f} đ
-
-Thuế thu nhập lũy tiến (5%-35%):
-  Áp dụng thang lũy tiến:     {progressive_income_tax:>25,.0f} đ
-
-Thuế cổ tức/lợi tức (10%):   {dividend_income_tax:>25,.0f} đ
-Thuế tiền lãi (10%):          {transfer_income_tax:>25,.0f} đ
-Thuế lãi chuyển nhượng (20%): {capital_gain_tax:>25,.0f} đ
-Thuế cho thuê bất động sản (10%): {rental_income_tax:>25,.0f} đ
-───────────────────────────────────────────────────────────
-TỔNG THUẾ PHẢI NỘP:          {total_tax:>25,.0f} đ
-
-═══════════════════════════════════════════════════════════
-
-KẾT QUẢ CUỐI CÙNG
-Tổng thuế phải nộp:          {total_tax:>25,.0f} đ
-Thuế đã nộp/khấu trừ:        {personal_income_tax_paid:>25,.0f} đ
-───────────────────────────────────────────────────────────
-{'THUẾ CÒN PHẢI NỘP:' if tax_to_pay > 0 else 'ĐƯỢC HOÀN LẠI:'} {(tax_to_pay if tax_to_pay > 0 else tax_refund):>25,.0f} đ
-
-═══════════════════════════════════════════════════════════
-
-GHI CHÚ:
-- Giảm trừ cá nhân: 11,000,000 đ/tháng (132,000,000 đ/năm)
-- Giảm trừ gia cảnh: 4,800,000 đ/con/năm (con dưới 18 tuổi hoặc 18-24 tuổi đang học)
-- Bảo hiểm tính theo quy định hiện hành
-- Thuế lũy tiến áp dụng: 5%, 10%, 15%, 20%, 25%, 30%, 35%
-- Thuế suất cố định: Cổ tức 10%, Lãi 10%, Chuyển nhượng 20%, Cho thuê 10%
-
-TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM:
-Báo cáo này được tính toán dựa trên các thông tin do người dùng cung cấp
-và theo quy định thuế hiện hành. Người sử dụng nên tham khảo ý kiến
-của chuyên gia tư vấn thuế hoặc cơ quan thuế để có kết quả chính xác nhất.
-
-═══════════════════════════════════════════════════════════
-"""
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.download_button(
-            label="📄 Tải Báo Cáo (File Text)",
-            data=export_text,
-            file_name=f"bao_cao_thue_tncn_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-            mime="text/plain"
-        )
-    
-    with col2:
-        # Create CSV export
-        csv_data = f"CHỈ TIÊU,SỐ TIỀN (VNĐ)\n"
-        csv_data += f"\nTHU NHẬP,\n"
-        csv_data += f"Lương,{salary:,.0f}\n"
-        csv_data += f"Phụ cấp,{allowance:,.0f}\n"
-        csv_data += f"Thưởng,{bonus:,.0f}\n"
-        csv_data += f"Công việc thêm,{part_time_income:,.0f}\n"
-        csv_data += f"Kinh doanh,{business_income:,.0f}\n"
-        csv_data += f"Cổ tức,{dividend_income:,.0f}\n"
-        csv_data += f"Lãi suất,{transfer_income:,.0f}\n"
-        csv_data += f"Chuyển nhượng,{capital_gain:,.0f}\n"
-        csv_data += f"Cho thuê,{rental_income:,.0f}\n"
-        csv_data += f"TỔNG THU NHẬP,{total_labor_income + dividend_income + transfer_income + capital_gain + rental_income:,.0f}\n"
-        csv_data += f"\nGIẢM TRỪ,\n"
-        csv_data += f"Giảm trừ cá nhân,{standard_deduction:,.0f}\n"
-        csv_data += f"Bảo hiểm,{calculated_insurance:,.0f}\n"
-        csv_data += f"Giảm trừ gia cảnh,{dependent_deduction:,.0f}\n"
-        csv_data += f"Chi phí kinh doanh,{business_expenses:,.0f}\n"
-        csv_data += f"\nTHUẾ,\n"
-        csv_data += f"Thuế lũy tiến,{progressive_income_tax:,.0f}\n"
-        csv_data += f"Thuế cổ tức,{dividend_income_tax:,.0f}\n"
-        csv_data += f"Thuế lãi,{transfer_income_tax:,.0f}\n"
-        csv_data += f"Thuế chuyển nhượng,{capital_gain_tax:,.0f}\n"
-        csv_data += f"Thuế cho thuê,{rental_income_tax:,.0f}\n"
-        csv_data += f"TỔNG THUẾ,{total_tax:,.0f}\n"
+    for _ in range(num_days):
+        if model_type == "Combined (Ensemble)":
+            pred = (model[0].predict(current_sequence.reshape(1, -1))[0] + 
+                   model[1].predict(current_sequence.reshape(1, -1))[0]) / 2
+        else:
+            pred = model.predict(current_sequence.reshape(1, -1))[0]
         
-        st.download_button(
-            label="📊 Tải Báo Cáo (File CSV)",
-            data=csv_data,
-            file_name=f"bao_cao_thue_tncn_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
+        predictions.append(pred)
+        
+        # Update sequence for next prediction
+        current_sequence = np.append(current_sequence[1:], pred)
+    
+    return np.array(predictions)
+
+def calculate_signal_strength(df):
+    """Calculate buy/sell signal strength"""
+    signals = []
+    
+    # RSI Signal
+    if df['RSI'].iloc[-1] < 30:
+        signals.append(("RSI", 1, "Quá bán (Oversold)"))
+    elif df['RSI'].iloc[-1] > 70:
+        signals.append(("RSI", -1, "Quá mua (Overbought)"))
+    else:
+        signals.append(("RSI", 0, "Trung lập"))
+    
+    # MACD Signal
+    if df['MACD'].iloc[-1] > df['Signal'].iloc[-1]:
+        signals.append(("MACD", 1, "Tích cực (Bullish)"))
+    else:
+        signals.append(("MACD", -1, "Tiêu cực (Bearish)"))
+    
+    # Moving Average Signal
+    if df['Close'].iloc[-1] > df['SMA_20'].iloc[-1] > df['SMA_50'].iloc[-1]:
+        signals.append(("MA", 1, "Uptrend"))
+    elif df['Close'].iloc[-1] < df['SMA_20'].iloc[-1] < df['SMA_50'].iloc[-1]:
+        signals.append(("MA", -1, "Downtrend"))
+    else:
+        signals.append(("MA", 0, "Trung lập"))
+    
+    # Price vs Bollinger Bands
+    if df['Close'].iloc[-1] > df['BB_Upper'].iloc[-1]:
+        signals.append(("BB", -1, "Trên dải trên (Overbought)"))
+    elif df['Close'].iloc[-1] < df['BB_Lower'].iloc[-1]:
+        signals.append(("BB", 1, "Dưới dải dưới (Oversold)"))
+    else:
+        signals.append(("BB", 0, "Trong dải"))
+    
+    return signals
+
+# ========== TAB 1: DATA & ANALYSIS ==========
+with tab1:
+    st.subheader("📊 Dữ Liệu & Phân Tích Cổ Phiếu")
+    
+    # Load data
+    with st.spinner(f"Đang tải dữ liệu cho {stock_symbol}..."):
+        stock_data = load_stock_data(stock_symbol, lookback_days)
+    
+    if stock_data is not None:
+        # Calculate indicators
+        stock_data = calculate_technical_indicators(stock_data)
+        
+        # Display metrics
+        current_price = stock_data['Close'].iloc[-1]
+        prev_price = stock_data['Close'].iloc[-2]
+        price_change = current_price - prev_price
+        price_change_pct = (price_change / prev_price) * 100
+        
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.metric("Giá Hiện Tại", f"{current_price:,.2f} đ", f"{price_change:+.2f} ({price_change_pct:+.2f}%)")
+        
+        with col2:
+            st.metric("Cao Nhất (52 tuần)", f"{stock_data['High'].tail(252).max():,.2f} đ")
+        
+        with col3:
+            st.metric("Thấp Nhất (52 tuần)", f"{stock_data['Low'].tail(252).min():,.2f} đ")
+        
+        with col4:
+            st.metric("Khối Lượng TB (20 ngày)", f"{stock_data['Volume'].tail(20).mean():,.0f}")
+        
+        with col5:
+            st.metric("Volatility (20 ngày)", f"{stock_data['Volatility'].iloc[-1]*100:.2f}%")
+        
+        st.divider()
+        
+        # Price chart
+        st.markdown("### 📈 Biểu Đồ Giá Cổ Phiếu")
+        
+        fig, ax = plt.subplots(figsize=(14, 6))
+        
+        ax.plot(stock_data.index, stock_data['Close'], label='Close Price', linewidth=2, color='#2E86AB')
+        ax.plot(stock_data.index, stock_data['SMA_20'], label='SMA 20', alpha=0.7, linestyle='--')
+        ax.plot(stock_data.index, stock_data['SMA_50'], label='SMA 50', alpha=0.7, linestyle='--')
+        
+        # Bollinger Bands
+        ax.fill_between(stock_data.index, stock_data['BB_Upper'], stock_data['BB_Lower'], alpha=0.1, color='gray')
+        
+        ax.set_xlabel('Ngày', fontsize=11)
+        ax.set_ylabel('Giá (VNĐ)', fontsize=11)
+        ax.set_title(f'Biểu Đồ Giá {stock_symbol}', fontsize=13, fontweight='bold')
+        ax.legend(loc='best')
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        st.pyplot(fig)
+        
+        # Data table
+        st.markdown("### 📋 Dữ Liệu Gần Đây (10 Ngày)")
+        
+        display_columns = ['Close', 'Volume', 'SMA_20', 'SMA_50', 'RSI', 'MACD']
+        display_data = stock_data[display_columns].tail(10).copy()
+        display_data = display_data.round(2)
+        
+        st.dataframe(display_data, use_container_width=True)
+    else:
+        st.error(f"Không thể tải dữ liệu cho {stock_symbol}. Vui lòng kiểm tra mã cổ phiếu.")
+
+# ========== TAB 2: ML MODEL ==========
+with tab2:
+    st.subheader("🤖 Mô Hình Machine Learning")
+    
+    if stock_data is not None:
+        st.markdown("### Thông Tin Mô Hình")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.info(f"📊 Loại Mô Hình: **{model_type}**")
+        with col2:
+            st.info(f"📈 Dữ Liệu Huấn Luyện: **{lookback_days} ngày**")
+        with col3:
+            st.info(f"🔮 Dự Đoán: **{prediction_days} ngày tới**")
+        
+        st.divider()
+        
+        # Train model
+        with st.spinner("Đang huấn luyện mô hình..."):
+            X, y, scaler = prepare_ml_data(stock_data, lookback=20)
+            model, metrics = train_ml_models(X, y, model_type)
+        
+        st.success("✅ Huấn luyện mô hình thành công!")
+        
+        # Display metrics
+        st.markdown("### 📊 Hiệu Suất Mô Hình")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("R² Score (Test)", f"{metrics['test_r2']:.4f}")
+        
+        with col2:
+            st.metric("RMSE (Test)", f"{metrics['test_rmse']:,.2f}")
+        
+        with col3:
+            st.metric("MAE (Test)", f"{metrics['test_mae']:,.2f}")
+        
+        with col4:
+            accuracy = (1 - (metrics['test_mae'] / stock_data['Close'].mean())) * 100
+            st.metric("Độ Chính Xác Ước Tính", f"{max(0, min(100, accuracy)):.2f}%")
+        
+        st.divider()
+        
+        # Actual vs Predicted
+        st.markdown("### 📈 Giá Thực Tế vs Dự Đoán (Test Set)")
+        
+        fig, ax = plt.subplots(figsize=(14, 6))
+        
+        ax.plot(range(len(metrics['y_test'])), metrics['y_test'], label='Giá Thực Tế', marker='o', markersize=3)
+        ax.plot(range(len(metrics['y_pred_test'])), metrics['y_pred_test'], label='Dự Đoán', marker='s', markersize=3, alpha=0.7)
+        
+        ax.set_xlabel('Thời Gian (ngày)', fontsize=11)
+        ax.set_ylabel('Giá (VNĐ)', fontsize=11)
+        ax.set_title('So Sánh Giá Thực Tế và Dự Đoán', fontsize=13, fontweight='bold')
+        ax.legend(loc='best')
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        st.pyplot(fig)
+        
+        # Residuals
+        st.markdown("### 📊 Phân Tích Sai Số (Residuals)")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            residuals = metrics['y_test'] - metrics['y_pred_test']
+            
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.hist(residuals, bins=30, edgecolor='black', alpha=0.7, color='#2E86AB')
+            ax.axvline(residuals.mean(), color='red', linestyle='--', linewidth=2, label=f'Mean: {residuals.mean():.2f}')
+            ax.set_xlabel('Sai Số (Residuals)', fontsize=11)
+            ax.set_ylabel('Tần Suất', fontsize=11)
+            ax.set_title('Phân Phối Sai Số', fontsize=12, fontweight='bold')
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            plt.tight_layout()
+            st.pyplot(fig)
+        
+        with col2:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.scatter(metrics['y_pred_test'], residuals, alpha=0.6, color='#2E86AB')
+            ax.axhline(y=0, color='red', linestyle='--', linewidth=2)
+            ax.set_xlabel('Giá Dự Đoán (VNĐ)', fontsize=11)
+            ax.set_ylabel('Sai Số (VNĐ)', fontsize=11)
+            ax.set_title('Biểu Đồ Sai Số', fontsize=12, fontweight='bold')
+            ax.grid(True, alpha=0.3)
+            plt.tight_layout()
+            st.pyplot(fig)
+
+# ========== TAB 3: PREDICTIONS ==========
+with tab3:
+    st.subheader("🔮 Dự Đoán Giá 10 Ngày Tới")
+    
+    if stock_data is not None:
+        # Train model again for predictions
+        with st.spinner("Đang tính toán dự đoán..."):
+            X, y, scaler = prepare_ml_data(stock_data, lookback=20)
+            model, metrics = train_ml_models(X, y, model_type)
+            
+            # Get last sequence for prediction
+            last_sequence = X[-1]
+            
+            # Predict future prices
+            future_predictions = predict_future_prices(model, last_sequence, scaler, prediction_days, model_type)
+        
+        # Create prediction dataframe
+        today = datetime.now()
+        future_dates = [today + timedelta(days=i) for i in range(1, prediction_days + 1)]
+        
+        predictions_df = pd.DataFrame({
+            'Ngày': future_dates,
+            'Dự Đoán Giá': future_predictions,
+            'Thay Đổi': [future_predictions[i] - (future_predictions[i-1] if i > 0 else stock_data['Close'].iloc[-1]) 
+                        for i in range(len(future_predictions))],
+        })
+        
+        predictions_df['Thay Đổi %'] = (predictions_df['Thay Đổi'] / 
+                                        stock_data['Close'].iloc[-1]) * 100
+        
+        current_price = stock_data['Close'].iloc[-1]
+        final_price = future_predictions[-1]
+        price_change = final_price - current_price
+        price_change_pct = (price_change / current_price) * 100
+        
+        # Display prediction summary
+        st.markdown("### 📈 Tóm Tắt Dự Đoán")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Giá Hiện Tại", f"{current_price:,.2f} đ")
+        
+        with col2:
+            st.metric("Giá Dự Đoán (Ngày 10)", f"{final_price:,.2f} đ")
+        
+        with col3:
+            if price_change >= 0:
+                st.markdown(f"<div class='bullish'>📈 Thay Đổi: +{price_change:,.2f} đ (+{price_change_pct:.2f}%)</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div class='bearish'>📉 Thay Đổi: {price_change:,.2f} đ ({price_change_pct:.2f}%)</div>", unsafe_allow_html=True)
+        
+        with col4:
+            signal = "🟢 TĂNG" if price_change_pct > 0 else "🔴 GIẢM"
+            st.markdown(f"<div style='font-size: 18px; font-weight: bold;'>{signal}</div>", unsafe_allow_html=True)
+        
+        st.divider()
+        
+        # Predictions table
+        st.markdown("### 📋 Chi Tiết Dự Đoán Theo Ngày")
+        
+        display_pred = predictions_df.copy()
+        display_pred['Ngày'] = display_pred['Ngày'].dt.strftime('%d/%m/%Y')
+        display_pred['Dự Đoán Giá'] = display_pred['Dự Đoán Giá'].apply(lambda x: f"{x:,.2f} đ")
+        display_pred['Thay Đổi'] = display_pred['Thay Đổi'].apply(lambda x: f"{x:+,.2f} đ")
+        display_pred['Thay Đổi %'] = display_pred['Thay Đổi %'].apply(lambda x: f"{x:+.2f}%")
+        
+        st.dataframe(display_pred, use_container_width=True, hide_index=True)
+        
+        st.divider()
+        
+        # Chart: Historical + Predictions
+        st.markdown("### 📈 Biểu Đồ: Lịch Sử + Dự Đoán")
+        
+        fig, ax = plt.subplots(figsize=(14, 7))
+        
+        # Historical data
+        ax.plot(stock_data.index[-30:], stock_data['Close'].iloc[-30:], 
+               label='Giá Lịch Sử', linewidth=2.5, color='#2E86AB', marker='o', markersize=4)
+        
+        # Predictions
+        pred_dates = future_dates
+        ax.plot(pred_dates, future_predictions, 
+               label='Dự Đoán', linewidth=2.5, color='#A23B72', marker='s', markersize=6, linestyle='--')
+        
+        # Confidence interval (using std of residuals)
+        residuals_std = (metrics['y_test'] - metrics['y_pred_test']).std()
+        upper_bound = future_predictions + (1.96 * residuals_std)
+        lower_bound = future_predictions - (1.96 * residuals_std)
+        
+        ax.fill_between(pred_dates, upper_bound, lower_bound, alpha=0.2, color='#A23B72', label='Khoảng tin cậy 95%')
+        
+        ax.set_xlabel('Ngày', fontsize=11)
+        ax.set_ylabel('Giá (VNĐ)', fontsize=11)
+        ax.set_title(f'Dự Đoán Giá {stock_symbol} - {prediction_days} Ngày Tới', fontsize=13, fontweight='bold')
+        ax.legend(loc='best', fontsize=10)
+        ax.grid(True, alpha=0.3)
+        
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        st.pyplot(fig)
+        
+        # Recommendation
+        st.divider()
+        st.markdown("### 💡 Khuyến Nghị")
+        
+        if price_change_pct > 3:
+            st.success(f"🟢 **TĂNG MẠNH**: Dự kiến giá sẽ tăng {price_change_pct:.2f}% trong {prediction_days} ngày tới")
+        elif price_change_pct > 1:
+            st.info(f"🟢 **TĂNG**: Dự kiến giá sẽ tăng {price_change_pct:.2f}% trong {prediction_days} ngày tới")
+        elif price_change_pct > -1:
+            st.info(f"🟡 **TRUNG LẬP**: Dự kiến giá sẽ đi ngang, thay đổi {price_change_pct:.2f}% trong {prediction_days} ngày tới")
+        elif price_change_pct > -3:
+            st.warning(f"🔴 **GIẢM**: Dự kiến giá sẽ giảm {abs(price_change_pct):.2f}% trong {prediction_days} ngày tới")
+        else:
+            st.error(f"🔴 **GIẢM MẠNH**: Dự kiến giá sẽ giảm {abs(price_change_pct):.2f}% trong {prediction_days} ngày tới")
+
+# ========== TAB 4: TECHNICAL INDICATORS ==========
+with tab4:
+    st.subheader("📈 Chỉ B��o Kỹ Thuật & Tín Hiệu Giao Dịch")
+    
+    if stock_data is not None:
+        # Calculate signals
+        signals = calculate_signal_strength(stock_data)
+        
+        st.markdown("### 📊 Tín Hiệu Kỹ Thuật")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            for signal_name, signal_value, signal_text in signals:
+                if signal_value > 0:
+                    color = "green"
+                    emoji = "🟢"
+                elif signal_value < 0:
+                    color = "red"
+                    emoji = "🔴"
+                else:
+                    color = "orange"
+                    emoji = "🟡"
+                
+                st.markdown(f"{emoji} **{signal_name}**: {signal_text}")
+        
+        # Overall signal strength
+        signal_sum = sum([s[1] for s in signals])
+        
+        with col2:
+            if signal_sum > 0:
+                st.success(f"### 🟢 Tín Hiệu MẠNH TĂNG\nĐiểm: {signal_sum}")
+            elif signal_sum < 0:
+                st.error(f"### 🔴 Tín Hiệu MẠNH GIẢM\nĐiểm: {signal_sum}")
+            else:
+                st.info(f"### 🟡 Tín Hiệu TRUNG LẬP\nĐiểm: {signal_sum}")
+        
+        st.divider()
+        
+        # Technical indicators charts
+        col1, col2 = st.columns(2)
+        
+        # RSI
+        with col1:
+            st.markdown("### RSI (Relative Strength Index)")
+            
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(stock_data.index[-60:], stock_data['RSI'].tail(60), linewidth=2, color='#2E86AB')
+            ax.axhline(y=70, color='red', linestyle='--', label='Quá Mua (70)')
+            ax.axhline(y=30, color='green', linestyle='--', label='Quá Bán (30)')
+            ax.fill_between(stock_data.index[-60:], 70, 100, alpha=0.1, color='red')
+            ax.fill_between(stock_data.index[-60:], 0, 30, alpha=0.1, color='green')
+            ax.set_ylabel('RSI', fontsize=10)
+            ax.set_title('RSI(14)', fontsize=11, fontweight='bold')
+            ax.legend(fontsize=9)
+            ax.set_ylim([0, 100])
+            ax.grid(True, alpha=0.3)
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            st.pyplot(fig)
+        
+        # MACD
+        with col2:
+            st.markdown("### MACD (Moving Average Convergence Divergence)")
+            
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(stock_data.index[-60:], stock_data['MACD'].tail(60), label='MACD', linewidth=2, color='#2E86AB')
+            ax.plot(stock_data.index[-60:], stock_data['Signal'].tail(60), label='Signal', linewidth=2, color='#A23B72')
+            ax.bar(stock_data.index[-60:], stock_data['MACD_Hist'].tail(60), label='Histogram', alpha=0.3, color='gray')
+            ax.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
+            ax.set_ylabel('MACD', fontsize=10)
+            ax.set_title('MACD', fontsize=11, fontweight='bold')
+            ax.legend(fontsize=9)
+            ax.grid(True, alpha=0.3)
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            st.pyplot(fig)
+        
+        # Bollinger Bands
+        st.markdown("### Bollinger Bands")
+        
+        fig, ax = plt.subplots(figsize=(14, 6))
+        ax.plot(stock_data.index[-60:], stock_data['Close'].tail(60), label='Close Price', linewidth=2, color='#2E86AB')
+        ax.plot(stock_data.index[-60:], stock_data['BB_Middle'].tail(60), label='Middle Band', linestyle='--', alpha=0.5)
+        ax.fill_between(stock_data.index[-60:], 
+                        stock_data['BB_Upper'].tail(60), 
+                        stock_data['BB_Lower'].tail(60), 
+                        alpha=0.2, color='gray', label='Bollinger Bands')
+        ax.set_xlabel('Ngày', fontsize=10)
+        ax.set_ylabel('Giá (VNĐ)', fontsize=10)
+        ax.set_title('Bollinger Bands (20, 2)', fontsize=11, fontweight='bold')
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        st.pyplot(fig)
+        
+        # Volume
+        st.markdown("### Khối Lượng Giao Dịch (Volume)")
+        
+        fig, ax = plt.subplots(figsize=(14, 5))
+        colors = ['green' if stock_data['Close'].iloc[i] >= stock_data['Close'].iloc[i-1] else 'red' 
+                 for i in range(1, len(stock_data[-60:]))]
+        ax.bar(stock_data.index[-60:-1], stock_data['Volume'].tail(59), color=colors, alpha=0.6)
+        ax.plot(stock_data.index[-60:], stock_data['Volume_MA'].tail(60), label='MA(20)', linewidth=2, color='blue')
+        ax.set_xlabel('Ngày', fontsize=10)
+        ax.set_ylabel('Khối Lượng', fontsize=10)
+        ax.set_title('Volume & Moving Average', fontsize=11, fontweight='bold')
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3, axis='y')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        st.pyplot(fig)
+
+# ========== TAB 5: GUIDE ==========
+with tab5:
+    st.subheader("❓ Hướng Dẫn & Thông Tin")
+    
+    st.markdown("""
+    ### 📚 Giới Thiệu Mô Hình
+    
+    Ứng dụng này sử dụng **Machine Learning** và **Technical Analysis** để dự đoán giá cổ phiếu
+    trong 10 ngày tới. Mô hình kết hợp nhiều chỉ báo kỹ thuật để đưa ra dự báo chính xác.
+    
+    ### 🤖 Các Mô Hình ML Được Sử Dụng
+    
+    #### 1. **Random Forest**
+    - Sử dụng nhiều cây quyết định để dự đoán
+    - Tốt cho dữ liệu không tuyến tính
+    - Ít bị overfitting hơn
+    
+    #### 2. **Linear Regression**
+    - Mô hình đơn giản, dễ hiểu
+    - Tốt khi giá có xu hướng tuyến tính
+    - Huấn luyện nhanh
+    
+    #### 3. **Combined (Ensemble)**
+    - Kết hợp cả Random Forest và Linear Regression
+    - Lấy trung bình của 2 mô hình
+    - Kết quả đa chiều và ổn định
+    
+    ### 📊 Chỉ Báo Kỹ Thuật
+    
+    **RSI (Relative Strength Index)**
+    - Giá trị: 0-100
+    - Quá bán: < 30 (tín hiệu mua)
+    - Quá mua: > 70 (tín hiệu bán)
+    
+    **MACD (Moving Average Convergence Divergence)**
+    - Gồm: MACD line, Signal line, Histogram
+    - MACD > Signal: Tín hiệu tăng
+    - MACD < Signal: Tín hiệu giảm
+    
+    **Bollinger Bands**
+    - Gồm: Middle (MA), Upper (MA + 2σ), Lower (MA - 2σ)
+    - Giá > Upper: Quá mua
+    - Giá < Lower: Quá bán
+    
+    **Moving Averages**
+    - SMA: Simple Moving Average
+    - EMA: Exponential Moving Average
+    - Giá > MA: Uptrend
+    - Giá < MA: Downtrend
+    
+    ### 📈 Cách Đọc Kết Quả
+    
+    1. **Tín Hiệu Giao Dịch**: Kết hợp từ 4 chỉ báo kỹ thuật
+    2. **Điểm Tín Hiệu**: 
+       - > 0: Tín hiệu tăng
+       - = 0: Trung lập
+       - < 0: Tín hiệu giảm
+    
+    3. **Khoảng Tin Cậy (Confidence Interval)**:
+       - Đường trên/dưới cho thấy phạm vi dự báo
+       - Càng hẹp = càng chính xác
+    
+    ### ⚠️ Lưu Ý & Tuyên Bố Miễn Trừ
+    
+    ✓ **Ứng dụng dành cho mục đích giáo dục và phân tích**
+    
+    ✗ **KHÔNG phải lời khuyên đầu tư chuyên nghiệp**
+    
+    ⚠️ **Rủi ro đầu tư cao - Bạn chịu toàn bộ trách nhiệm**
+    
+    💡 **Luôn tham khảo chuyên gia tư vấn tài chính trước khi quyết định**
+    
+    ### 🎯 Cách Sử Dụng An Toàn
+    
+    1. **Không dựa 100% vào mô hình**
+        - Kết hợp với phân tích cơ bản (P/E, EPS, v.v.)
+        - Xem xét tin tức và sự kiện thị trường
+    
+    2. **Quản lý rủi ro**
+        - Chỉ đầu tư số tiền bạn chấp nhận mất
+        - Sử dụng stop-loss
+        - Đa dạng hóa danh mục
+    
+    3. **Kiểm tra độ chính xác**
+        - So sánh dự báo với giá thực tế
+        - Điều chỉnh mô hình nếu cần
+        - Theo dõi thường xuyên
+    
+    ### 📞 Liên Hệ & Hỗ Trợ
+    
+    - **Model Performance**: Xem R² Score (càng cao càng tốt, tối đa 1.0)
+    - **MAE**: Sai số trung bình tuyệt đối
+    - **RMSE**: Căn bậc hai sai số bình phương trung bình
+    
+    Dự áp dụng giàng tối ưu mô hình cho cộc phiếu cụ thể!
+    """)
+    
+    st.warning("⚠️ **TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM**: Ứng dụng này chỉ dành cho mục đích giáo dục. Không phải lời khuyên đầu tư. Luôn tham khảo chuyên gia tài chính trước khi đầu tư.")
 
 # Footer
 st.divider()
 st.markdown("""
-<div class="warning-box">
-<strong>⚠️ TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM:</strong>
-<br><br>
-Ứng dụng này được phát triển cho mục đích giáo dục và ước lượng. Kết quả tính toán dựa trên 
-thông tin người dùng cung cấp và theo luật thuế Việt Nam hiện hành (năm 2024). 
-<br><br>
-Tuy nhiên:
-<ul>
-<li>Ứng dụng không thay thế cho tư vấn chuyên nghiệp từ một chuyên gia tư vấn thuế hoặc kế toán.</li>
-<li>Có thể có những trường hợp đặc biệt, miễn trừ, hoặc điều kiện riêng không được tính đến.</li>
-<li>Kết quả tính toán cần được kiểm tra lại bởi cá nhân hoặc chuyên gia trước khi nộp thuế.</li>
-<li>Cơ quan thuế là thẩm quyền cuối cùng trong xác định nghĩa vụ thuế.</li>
-</ul>
-
-Vui lòng liên hệ với cơ quan thuế hoặc chuyên gia tư vấn thuế để có lời khuyên chính xác nhất.
+<div style='text-align: center; color: gray;'>
+    <p>📈 Stock Price Prediction AI Model | Developed for Educational Purposes Only</p>
+    <p>⚠️ This model is not financial advice. Invest at your own risk.</p>
 </div>
 """, unsafe_allow_html=True)
